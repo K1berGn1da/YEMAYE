@@ -1,4 +1,5 @@
 import ast
+import colorsys
 import math
 import operator
 import tkinter as tk
@@ -121,6 +122,15 @@ class Calculator:
     NUMBER_CHARS = set("0123456789")
     VALUE_END_CHARS = set("0123456789.)")
     OPERATOR_CHARS = set("+-*/%")
+    RAINBOW = [
+        "#ff1744",
+        "#ff9100",
+        "#ffea00",
+        "#00e676",
+        "#00e5ff",
+        "#2979ff",
+        "#d500f9",
+    ]
 
     def __init__(self, root):
         self.root = root
@@ -132,43 +142,51 @@ class Calculator:
         self.input_text = tk.StringVar(value="0")
         self.angle_mode = tk.StringVar(value="DEG")
         self.evaluator = SafeCalculator(self.angle_mode.get)
+        self.buttons = {}
+        self.button_base_styles = {}
+        self.rgb_phase = 0
 
         self.create_widgets()
+        self.animate_display_rgb()
         self.root.bind_all("<Key>", self.on_key_press)
 
     def create_widgets(self):
-        self.root.configure(bg="#202020")
+        self.root.configure(bg="#050013")
 
-        display_frame = tk.Frame(self.root, bg="#202020")
-        display_frame.pack(fill=tk.X, padx=12, pady=(12, 6))
+        self.display_glow = tk.Frame(self.root, bg="#ff1744", bd=0)
+        self.display_glow.pack(fill=tk.X, padx=12, pady=(12, 8))
 
-        mode_label = tk.Label(
+        display_frame = tk.Frame(self.display_glow, bg="#08031f")
+        display_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.mode_label = tk.Label(
             display_frame,
             textvariable=self.angle_mode,
-            font=("Segoe UI", 11, "bold"),
-            bg="#202020",
-            fg="#9cdcfe",
+            font=("Segoe UI Semibold", 11),
+            bg="#08031f",
+            fg="#00e5ff",
             anchor="w",
         )
-        mode_label.pack(fill=tk.X)
+        self.mode_label.pack(fill=tk.X, padx=10, pady=(8, 0))
 
-        display = tk.Entry(
+        self.display = tk.Entry(
             display_frame,
             textvariable=self.input_text,
-            font=("Segoe UI", 28),
+            font=("Segoe UI Semibold", 30),
             justify="right",
-            readonlybackground="#202020",
-            bg="#202020",
+            readonlybackground="#08031f",
+            bg="#08031f",
             fg="#ffffff",
             bd=0,
             relief=tk.FLAT,
             state="readonly",
             takefocus=0,
+            insertbackground="#ffffff",
         )
-        display.pack(fill=tk.X, ipady=18)
+        self.display.pack(fill=tk.X, padx=10, pady=(0, 10), ipady=18)
 
-        buttons_frame = tk.Frame(self.root, bg="#202020")
-        buttons_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 12))
+        buttons_frame = tk.Frame(self.root, bg="#050013")
+        buttons_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 12))
 
         buttons = [
             ["DEG/RAD", "sin", "cos", "tan", "C", "←"],
@@ -199,29 +217,36 @@ class Calculator:
                 )
 
     def create_button(self, parent, text, row, column, column_span=1):
-        bg = "#323232"
+        bg = "#15143d"
         fg = "#ffffff"
 
         if text in self.OPERATOR_CHARS or text in {"=", "mod", "xʸ"}:
-            bg = "#ff9500"
+            bg = "#ff7a00"
         elif text in {"C", "CE", "←"}:
-            bg = "#d83b01"
+            bg = "#ff1744"
         elif text in {"DEG/RAD"}:
-            bg = "#0078d4"
+            bg = "#00c2ff"
+            fg = "#00111d"
+        elif text in self.NUMBER_CHARS or text == ".":
+            bg = "#19f5aa"
+            fg = "#06120e"
         elif text not in self.NUMBER_CHARS and text != ".":
-            bg = "#3b3b3b"
+            bg = "#8f00ff"
 
         button = tk.Button(
             parent,
             text=text,
-            font=("Segoe UI", 13),
+            font=("Segoe UI Semibold", 13),
             bg=bg,
             fg=fg,
-            activebackground="#4f4f4f",
+            activebackground="#fff200",
             activeforeground="#ffffff",
             command=lambda: self.on_button_click(text),
-            relief=tk.FLAT,
-            bd=0,
+            relief=tk.RAISED,
+            bd=2,
+            highlightthickness=2,
+            highlightbackground="#ffffff",
+            cursor="hand2",
         )
         button.grid(
             row=row,
@@ -231,8 +256,12 @@ class Calculator:
             padx=3,
             pady=3,
         )
+        self.buttons.setdefault(text, []).append(button)
+        self.button_base_styles[button] = {"bg": bg, "fg": fg, "activebackground": "#fff200"}
 
     def on_button_click(self, char):
+        self.flash_button(char)
+
         if char in self.NUMBER_CHARS:
             self.append_value(char)
         elif char == ".":
@@ -492,6 +521,43 @@ class Calculator:
             return str(int(round(value)))
 
         return f"{value:.15g}"
+
+    def animate_display_rgb(self):
+        hue = (self.rgb_phase % 360) / 360
+        glow = self.hsv_to_hex(hue, 1, 1)
+        accent = self.hsv_to_hex((hue + 0.5) % 1, 0.85, 1)
+        panel = self.hsv_to_hex((hue + 0.08) % 1, 0.65, 0.18)
+
+        self.display_glow.configure(bg=glow)
+        self.mode_label.configure(fg=accent, bg=panel)
+        self.display.configure(readonlybackground=panel, bg=panel)
+
+        self.rgb_phase = (self.rgb_phase + 4) % 360
+        self.root.after(45, self.animate_display_rgb)
+
+    def flash_button(self, text):
+        for button in self.buttons.get(text, []):
+            self.animate_button_rainbow(button, 0)
+
+    def animate_button_rainbow(self, button, step):
+        if step >= len(self.RAINBOW):
+            base = self.button_base_styles.get(button)
+            if base:
+                button.configure(**base)
+            return
+
+        color = self.RAINBOW[step]
+        button.configure(
+            bg=color,
+            activebackground=color,
+            fg="#050013" if step in {2, 3, 4} else "#ffffff",
+        )
+        self.root.after(45, lambda: self.animate_button_rainbow(button, step + 1))
+
+    @staticmethod
+    def hsv_to_hex(hue, saturation, value):
+        red, green, blue = colorsys.hsv_to_rgb(hue, saturation, value)
+        return f"#{round(red * 255):02x}{round(green * 255):02x}{round(blue * 255):02x}"
 
 
 if __name__ == "__main__":
